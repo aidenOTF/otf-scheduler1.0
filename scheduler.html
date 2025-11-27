@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>OTF Scheduler — Simple Version</title>
+
+<style>
+    body { font-family: Arial; margin: 20px; background: #f4f4f4; }
+    h2 { margin-top: 25px; text-align:center; }
+    .tabs button {
+        padding: 10px 18px; margin: 5px;
+        border-radius: 8px; border: none;
+        cursor: pointer; background: #ddd;
+    }
+    .tabs button.active { background: #ff7300; color: white; }
+    .screen { display: none; }
+    .active { display: block; }
+    .card {
+        background: white; padding: 15px; border-radius: 10px;
+        margin: 15px 0; box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    table { width:100%; border-collapse: collapse; margin-top: 15px; }
+    th,td { border:1px solid #ccc; padding:8px; text-align:center; }
+    th { background:#ff7300; color:white; }
+    .opener { background: rgba(255,100,0,0.18); }
+    .mid { background: rgba(0,123,255,0.18); }
+    .closer { background: rgba(138,43,226,0.18); }
+    .action {
+        width:100%; background:#ff7300; color:white;
+        padding:12px; border-radius:10px; border:none; cursor:pointer;
+        margin-top: 10px;
+    }
+    #lockScreen { text-align:center; margin-top: 40px; }
+</style>
+
+</head>
+<body>
+
+<!-- MANAGER LOGIN SCREEN -->
+<div id="lockScreen" class="screen active">
+    <h2>Manager Login</h2>
+
+    <div class="card" style="max-width:300px; margin:auto;">
+        <label>Password</label>
+        <input id="mgrPass" type="password" style="width:100%; padding:8px; border-radius:8px; border:1px solid #aaa;">
+
+        <button class="action" onclick="unlockManager()">Login</button>
+        <p style="margin-top:10px; color:#555;">Enter password to access schedule</p>
+    </div>
+
+    <button class="action" style="max-width:200px; margin:auto; background:#888" onclick="enterEmployeeMode()">Employee View</button>
+</div>
+
+
+
+<!-- MAIN SCHEDULER CONTENT -->
+<div id="mainContent" style="display:none;">
+
+<div class="tabs">
+    <button class="tab active" onclick="showScreen('weekly', this)">Weekly</button>
+    <button class="tab" onclick="showScreen('daily', this)">Daily</button>
+    <button id="editTab" class="tab" style="display:none;" onclick="showScreen('edit', this)">Edit</button>
+    <button id="empTab" class="tab" style="display:none;" onclick="showScreen('employees', this)">Employees</button>
+</div>
+
+
+<!-- WEEKLY SCREEN -->
+<div id="weekly" class="screen active">
+    <h2>Weekly Schedule</h2>
+
+    <table>
+        <tr>
+            <th>Employee</th>
+            <th>Mon</th><th>Tue</th><th>Wed</th>
+            <th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th>
+        </tr>
+        <tbody id="weekly-content"></tbody>
+    </table>
+</div>
+
+
+<!-- DAILY SCREEN -->
+<div id="daily" class="screen">
+    <h2>Daily Breakdown</h2>
+    <div id="daily-content"></div>
+</div>
+
+
+<!-- EDIT SCREEN -->
+<div id="edit" class="screen">
+    <h2>Edit Weekly Schedule</h2>
+    <div id="edit-table"></div>
+    <button class="action" onclick="saveSchedule()">Save</button>
+</div>
+
+
+<!-- EMPLOYEE MANAGER -->
+<div id="employees" class="screen">
+    <h2>Employees</h2>
+
+    <div class="card">
+        <label>Name</label>
+        <input id="newName">
+
+        <label>Role</label>
+        <select id="newRole">
+            <option value="opener">Opener</option>
+            <option value="mid">Mid</option>
+            <option value="closer">Closer</option>
+        </select>
+
+        <button class="action" onclick="addEmployee()">Add Employee</button>
+    </div>
+
+    <h3>Current Employees</h3>
+    <div id="employeeList"></div>
+</div>
+
+</div> <!-- end main content -->
+
+<script>
+/* ======= PASSWORD PROTECTION ======= */
+const MANAGER_PASSWORD = "pc";
+
+let isManager = false;
+
+function unlockManager() {
+    let pw = document.getElementById("mgrPass").value;
+    if (pw === MANAGER_PASSWORD) {
+        isManager = true;
+        document.getElementById("lockScreen").style.display = "none";
+        document.getElementById("mainContent").style.display = "block";
+        document.getElementById("editTab").style.display = "inline-block";
+        document.getElementById("empTab").style.display = "inline-block";
+        renderAll();
+    } else {
+        alert("Incorrect password.");
+    }
+}
+
+function enterEmployeeMode() {
+    isManager = false;
+    document.getElementById("lockScreen").style.display = "none";
+    document.getElementById("mainContent").style.display = "block";
+    document.getElementById("editTab").style.display = "none";
+    document.getElementById("empTab").style.display = "none";
+    renderAll();
+}
+
+
+
+/* ======= SIMPLE DATA ======= */
+let employees = [
+    { name:"Morgan", role:"opener" },
+    { name:"Aiden", role:"opener" },
+    { name:"Nicole", role:"mid" },
+    { name:"Tison", role:"closer" }
+];
+
+let schedule = {
+    Morgan:["4:30–7:15","4:30–7:15","-","4:30–7:15","-","6:30–12:30","-"],
+    Aiden:["7:00–3:00","3:00–8:00","4:30–12:30","-","10:00–6:00","6:30–12:30","7:45–12:30"],
+    Nicole:["-","-","-","7:15–3:30","10:00–6:00","-","-"],
+    Tison:["-","-","-","3:30–7:45","3:30–7:45","-","-"]
+};
+
+let days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+/* ======= TAB SWITCH ======= */
+function showScreen(id, btn){
+    document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    btn.classList.add("active");
+
+    renderAll();
+}
+
+/* ======= WEEKLY RENDER ======= */
+function renderWeekly(){
+    let out = "";
+    employees.forEach(emp=>{
+        out += `<tr><td><strong>${emp.name}</strong></td>`;
+        schedule[emp.name].forEach(shift=>{
+            out += `<td class="${emp.role}">${shift}</td>`;
+        });
+        out += `</tr>`;
+    });
+    document.getElementById("weekly-content").innerHTML = out;
+}
+
+/* ======= DAILY RENDER ======= */
+function renderDaily(){
+    let out = "";
+    for(let i=0;i<7;i++){
+        out += `<div class="card"><h3>${days[i]}</h3>`;
+        employees.forEach(emp=>{
+            out += `<p><span class="${emp.role}" style="padding:6px 8px; border-radius:6px;">`
+                 + `${emp.name}: ${schedule[emp.name][i]}</span></p>`;
+        });
+        out += `</div>`;
+    }
+    document.getElementById("daily-content").innerHTML = out;
+}
+
+/* ======= EDIT TABLE ======= */
+function renderEdit(){
+    if (!isManager) return;
+
+    let html = "<table><tr><th>Employee</th>";
+    days.forEach(d=>html += `<th>${d}</th>`);
+    html += "</tr>";
+
+    employees.forEach(emp=>{
+        html += `<tr><td>${emp.name}</td>`;
+        for(let i=0;i<7;i++){
+            html += `<td><input style="width:90%" id="e_${emp.name}_${i}" value="${schedule[emp.name][i]}"></td>`;
+        }
+        html += "</tr>";
+    });
+
+    html += "</table>";
+    document.getElementById("edit-table").innerHTML = html;
+}
+
+function saveSchedule(){
+    if (!isManager) return;
+
+    employees.forEach(emp=>{
+        for(let i=0;i<7;i++){
+            schedule[emp.name][i] =
+                document.getElementById(`e_${emp.name}_${i}`).value;
+        }
+    });
+    alert("Saved!");
+    renderAll();
+}
+
+/* ======= EMPLOYEE MANAGER ======= */
+function renderEmployees(){
+    if (!isManager) return;
+
+    let out = "";
+    employees.forEach((emp,i)=>{
+        out += `<div class="card">
+                    <strong>${emp.name}</strong> (${emp.role})
+                    <button style="float:right" onclick="removeEmployee(${i})">Remove</button>
+                </div>`;
+    });
+    document.getElementById("employeeList").innerHTML = out;
+}
+
+function addEmployee(){
+    if (!isManager) return;
+
+    let n = document.getElementById("newName").value.trim();
+    let r = document.getElementById("newRole").value;
+
+    if(n==="") return alert("Enter a name.");
+
+    employees.push({name:n, role:r});
+    schedule[n] = ["-","-","-","-","-","-","-"];
+
+    document.getElementById("newName").value = "";
+
+    renderAll();
+}
+
+function removeEmployee(i){
+    if (!isManager) return;
+
+    let name = employees[i].name;
+    employees.splice(i,1);
+    delete schedule[name];
+    renderAll();
+}
+
+/* ======= RENDER EVERYTHING ======= */
+function renderAll(){
+    renderWeekly();
+    renderDaily();
+    renderEdit();
+    renderEmployees();
+}
+
+</script>
+
+</body>
+</html>
