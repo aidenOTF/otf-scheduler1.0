@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>OTF Multi-Week Scheduler</title>
+
+<style>
+    body { font-family: Arial; margin: 20px; background: #f4f4f4; }
+    h2 { text-align:center; }
+
+    .tabs button {
+        padding: 10px 18px; margin: 5px;
+        border-radius: 8px; border: none;
+        cursor: pointer; background: #ddd;
+    }
+    .tabs button.active { background: #ff7300; color:white; }
+
+    .screen { display:none; }
+    .active { display:block; }
+
+    .card {
+        background:white; padding:15px; border-radius:10px;
+        margin:15px 0; box-shadow:0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    table { width:100%; border-collapse:collapse; margin-top:15px; }
+    th,td { border:1px solid #ccc; padding:8px; text-align:center; }
+    th { background:#ff7300; color:white; }
+
+    /* Role colors */
+    .Morgan { background:rgba(255,100,0,0.18); }
+    .Aiden { background:rgba(255,0,0,0.25); color:#b00000; }
+    .Nicole { background:rgba(0,123,255,0.18); }
+    .Tison { background:rgba(138,43,226,0.18); }
+
+    input, select {
+        padding:8px; width:90%; border-radius:8px;
+        border:1px solid #aaa;
+    }
+
+    .action {
+        width:100%; padding:12px; border-radius:10px;
+        background:#ff7300; border:none; color:white;
+        cursor:pointer; margin-top:10px;
+    }
+
+    #lockScreen { text-align:center; margin-top:40px; }
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="lockScreen" class="screen active">
+    <h2>Manager Login</h2>
+    <div class="card" style="max-width:300px; margin:auto;">
+        <label>Password</label>
+        <input id="mgrPass" type="password" style="width:100%">
+        <button class="action" onclick="unlockManager()">Login</button>
+    </div>
+
+    <button class="action" style="max-width:200px;margin:auto;background:#888"
+            onclick="enterEmployeeMode()">Employee View</button>
+</div>
+
+<!-- ================ MAIN CONTENT ================ -->
+<div id="mainContent" style="display:none;">
+
+<!-- Week Selector -->
+<div class="card" style="max-width:400px;margin:auto;text-align:center;">
+    <label><strong>Select Week:</strong></label><br>
+    <select id="weekSelect" onchange="loadSelectedWeek()" style="width:90%;margin-top:10px;"></select>
+    <br><br>
+    <button class="action" onclick="addNewWeek()">Add New Week</button>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+    <button class="tab active" onclick="showScreen('weekly',this)">Weekly</button>
+    <button class="tab" onclick="showScreen('daily',this)">Daily</button>
+    <button id="editTab" class="tab" style="display:none;" onclick="showScreen('edit',this)">Edit</button>
+    <button id="empTab" class="tab" style="display:none;" onclick="showScreen('employees',this)">Employees</button>
+</div>
+
+<!-- WEEKLY -->
+<div id="weekly" class="screen active">
+    <h2 id="weekLabel"></h2>
+    <table>
+        <thead>
+            <tr id="dateRow"><th>Employee</th></tr>
+        </thead>
+        <tbody id="weekly-content"></tbody>
+    </table>
+</div>
+
+<!-- DAILY -->
+<div id="daily" class="screen">
+    <h2 id="dailyLabel"></h2>
+    <div id="daily-content"></div>
+</div>
+
+<!-- EDIT -->
+<div id="edit" class="screen">
+    <h2>Edit This Week</h2>
+    <div id="edit-table"></div>
+    <button class="action" onclick="saveSchedule()">Save Changes</button>
+</div>
+
+<!-- EMPLOYEES -->
+<div id="employees" class="screen">
+    <h2>Employees</h2>
+
+    <div class="card">
+        <label>Name</label>
+        <input id="newName">
+        <label>Role</label>
+        <select id="newRole">
+            <option value="opener">Opener</option>
+            <option value="mid">Mid</option>
+            <option value="closer">Closer</option>
+        </select>
+        <button class="action" onclick="addEmployee()">Add Employee</button>
+    </div>
+
+    <h3>Current Employees</h3>
+    <div id="employeeList"></div>
+</div>
+
+</div><!-- main content -->
+
+<script>
+/* ====================== LOGIN ======================= */
+const MANAGER_PASSWORD = "pc";
+let isManager = false;
+
+function unlockManager(){
+    if(document.getElementById("mgrPass").value === MANAGER_PASSWORD){
+        isManager = true;
+        document.getElementById("lockScreen").classList.remove("active");
+        document.getElementById("lockScreen").style.display = "none";
+        document.getElementById("mainContent").style.display = "block";
+        document.getElementById("editTab").style.display = "inline-block";
+        document.getElementById("empTab").style.display = "inline-block";
+        renderAll();
+    } else alert("Incorrect password");
+}
+
+function enterEmployeeMode(){
+    isManager = false;
+    document.getElementById("lockScreen").style.display="none";
+    document.getElementById("mainContent").style.display="block";
+    renderAll();
+}
+
+/* ====================== EMPLOYEES ======================= */
+let employees = [
+    {name:"Morgan", role:"opener"},
+    {name:"Aiden", role:"opener"},
+    {name:"Nicole", role:"mid"},
+    {name:"Tison", role:"closer"}
+];
+
+let colors = {
+    "Morgan":"Morgan",
+    "Aiden":"Aiden",
+    "Nicole":"Nicole",
+    "Tison":"Tison"
+};
+
+/* ====================== WEEK SYSTEM ======================= */
+
+let weeks = {};  // stored as weekStartString : schedule
+
+// Preload starting week 12/01/2024
+let start = "2024-12-01";
+
+weeks[start] = {
+    Morgan:["4:30–7:15","4:30–7:15","-","4:30–7:15","-","6:30–12:30","-"],
+    Aiden:["7:00–3:00","3:00–8:00","4:30–12:30","-","10:00–6:00","6:30–12:30","7:45–12:30"],
+    Nicole:["-","-","-","7:15–3:30","10:00–6:00","-","-"],
+    Tison:["-","-","-","3:30–7:45","3:30–7:45","-","-"]
+};
+
+let currentWeek = start;
+
+/* ====================== DATE HELPERS ======================= */
+
+function formatDate(dt){
+    return dt.toLocaleDateString("en-US",{month:"2-digit",day:"2-digit"});
+}
+
+function getDatesForWeek(startStr){
+    let d = new Date(startStr);
+    let arr = [];
+    for(let i=0;i<7;i++){
+        let t = new Date(d);
+        t.setDate(d.getDate()+i);
+        arr.push(t);
+    }
+    return arr;
+}
+
+/* ====================== WEEK SELECT ======================= */
+
+function refreshWeekDropdown(){
+    let sel = document.getElementById("weekSelect");
+    sel.innerHTML = "";
+    Object.keys(weeks).sort().forEach(w=>{
+        sel.innerHTML += `<option value="${w}" ${w===currentWeek?"selected":""}>
+            Week of ${w}
+        </option>`;
+    });
+}
+
+function loadSelectedWeek(){
+    currentWeek = document.getElementById("weekSelect").value;
+    renderAll();
+}
+
+function addNewWeek(){
+    let d = prompt("Enter new week start date (YYYY-MM-DD):");
+    if(!d) return;
+    if(weeks[d]){
+        alert("Week already exists.");
+        return;
+    }
+
+    // Generate empty schedule for new week
+    let blank = {};
+    employees.forEach(emp=>{
+        blank[emp.name] = ["-","-","-","-","-","-","-"];
+    });
+    weeks[d] = blank;
+    currentWeek = d;
+    refreshWeekDropdown();
+    renderAll();
+}
+
+/* ====================== WEEKLY ======================= */
+
+function renderWeekly(){
+    let body = document.getElementById("weekly-content");
+    let dateRow = document.getElementById("dateRow");
+
+    let weekDates = getDatesForWeek(currentWeek);
+    let dateCells = "<th>Employee</th>";
+    let dayNames = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+    for(let i=0;i<7;i++){
+        dateCells += `<th>${dayNames[i]}<br>${formatDate(weekDates[i])}</th>`;
+    }
+    dateRow.innerHTML = dateCells;
+
+    body.innerHTML = "";
+
+    employees.forEach(emp=>{
+        let row = `<tr><td><strong>${emp.name}</strong></td>`;
+        weeks[currentWeek][emp.name].forEach(s=>{
+            row += `<td class="${colors[emp.name]}">${s}</td>`;
+        });
+        row += "</tr>";
+        body.innerHTML += row;
+    });
+
+    document.getElementById("weekLabel").innerText =
+        "Week of " + currentWeek;
+}
+
+/* ====================== DAILY ======================= */
+
+function renderDaily(){
+    let div = document.getElementById("daily-content");
+    div.innerHTML = "";
+    let dates = getDatesForWeek(currentWeek);
+    let dayNames = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+    for(let i=0;i<7;i++){
+        let card = `<div class="card">
+            <h3>${dayNames[i]} — ${formatDate(dates[i])}</h3>
+        `;
+
+        employees.forEach(emp=>{
+            let sh = weeks[currentWeek][emp.name][i];
+            card += `<p><span class="${colors[emp.name]}" style="padding:6px 8px;border-radius:6px;">
+                ${emp.name}: ${sh}
+            </span></p>`;
+        });
+
+        card += `</div>`;
+        div.innerHTML += card;
+    }
+
+    document.getElementById("dailyLabel").innerText =
+        "Week of " + currentWeek;
+}
+
+/* ====================== EDIT ======================= */
+
+function renderEdit(){
+    if(!isManager) return;
+
+    let html = "<table><tr><th>Employee</th>";
+
+    let d = getDatesForWeek(currentWeek);
+    let dayNames=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    for(let i=0;i<7;i++){
+        html += `<th>${dayNames[i]}<br>${formatDate(d[i])}</th>`;
+    }
+    html += "</tr>";
+
+    employees.forEach(emp=>{
+        html += `<tr><td>${emp.name}</td>`;
+        for(let i=0;i<7;i++){
+            let val = weeks[currentWeek][emp.name][i];
+            html += `<td><input id="e_${emp.name}_${i}" value="${val}"></td>`;
+        }
+        html += "</tr>";
+    });
+
+    html += "</table>";
+
+    document.getElementById("edit-table").innerHTML = html;
+}
+
+function saveSchedule(){
+    employees.forEach(emp=>{
+        for(let i=0;i<7;i++){
+            let id = `e_${emp.name}_${i}`;
+            let v = document.getElementById(id).value;
+            weeks[currentWeek][emp.name][i] = v;
+        }
+    });
+    alert("Saved.");
+    renderAll();
+}
+
+/* ====================== EMPLOYEE MANAGER ======================= */
+
+function renderEmployeeList(){
+    if(!isManager) return;
+
+    let out = "";
+    employees.forEach((emp,idx)=>{
+        out += `<div class="card">
+            <strong>${emp.name}</strong> (${emp.role})
+            <button style="float:right" onclick="removeEmployee(${idx})">Remove</button>
+        </div>`;
+    });
+    document.getElementById("employeeList").innerHTML = out;
+}
+
+function addEmployee(){
+    let n = document.getElementById("newName").value.trim();
+    let r = document.getElementById("newRole").value;
+
+    if(n==="") return alert("Enter name.");
+
+    employees.push({name:n,role:r});
+    colors[n] = r; 
+
+    // add to all weeks
+    Object.keys(weeks).forEach(w=>{
+        weeks[w][n] = ["-","-","-","-","-","-","-"];
+    });
+
+    document.getElementById("newName").value="";
+    renderAll();
+}
+
+function removeEmployee(i){
+    let name = employees[i].name;
+    employees.splice(i,1);
+    delete colors[name];
+
+    Object.keys(weeks).forEach(w=>{
+        delete weeks[w][name];
+    });
+
+    renderAll();
+}
+
+/* ====================== NAVIGATION ======================= */
+
+function showScreen(id,btn){
+    document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    btn.classList.add("active");
+
+    renderAll();
+}
+
+/* ====================== RENDER ALL ======================= */
+
+function renderAll(){
+    refreshWeekDropdown();
+    renderWeekly();
+    renderDaily();
+    renderEdit();
+    renderEmployeeList();
+}
+
+</script>
+</body>
+</html>
